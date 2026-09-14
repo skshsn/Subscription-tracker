@@ -15,9 +15,10 @@ npm run dev      # start dev server (Turbopack, default port 3000)
 npm run build    # production build (Turbopack) -- also runs the TypeScript check
 npm run start    # serve a production build
 npm run lint     # eslint (flat config: eslint-config-next core-web-vitals + typescript)
+npm test         # node's built-in test runner via tsx, for lib/**/*.test.ts
 ```
 
-There is no test runner configured yet (no Jest/Vitest/Playwright test suite, despite `playwright` being present as a dependency for one-off screenshot verification during development).
+Tests use `node --conditions=react-server --import tsx --test` rather than Jest/Vitest -- no framework dependency needed for plain-function unit tests. The `--conditions=react-server` flag is required because several `lib/` modules import the `server-only` marker package, whose default export unconditionally throws outside a bundler; that condition selects its no-op `react-server` build instead (see `node_modules/server-only/package.json`). `playwright` is a dependency for one-off screenshot verification during development, not an automated test suite.
 
 ## Next.js 16: do not rely on training data here
 

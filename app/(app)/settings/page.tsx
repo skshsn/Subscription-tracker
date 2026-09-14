@@ -1,16 +1,21 @@
 import { createClient, requireUser } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { NotificationPrefsForm } from "@/components/settings/NotificationPrefsForm";
+import { ConnectedAccounts } from "@/components/settings/ConnectedAccounts";
+import { getGmailConnectionStatus } from "@/actions/gmail";
 
 export default async function SettingsPage() {
   const { user } = await requireUser();
   const supabase = await createClient();
 
-  const { data: prefs } = await supabase
-    .from("notification_preferences")
-    .select("email_enabled, reminder_days_monthly, reminder_days_annual, reminder_days_trial")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: prefs }, gmail] = await Promise.all([
+    supabase
+      .from("notification_preferences")
+      .select("email_enabled, reminder_days_monthly, reminder_days_annual, reminder_days_trial")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    getGmailConnectionStatus(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -34,10 +39,8 @@ export default async function SettingsPage() {
       </Card>
 
       <Card>
-        <h2 className="mb-1 text-lg font-semibold">Connected accounts</h2>
-        <p className="text-sm text-muted">
-          Gmail-based automatic subscription detection isn&apos;t connected yet.
-        </p>
+        <h2 className="mb-3 text-lg font-semibold">Connected accounts</h2>
+        <ConnectedAccounts gmail={gmail} />
       </Card>
 
       <Card>
