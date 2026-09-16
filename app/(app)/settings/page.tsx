@@ -4,7 +4,8 @@ import { NotificationPrefsForm } from "@/components/settings/NotificationPrefsFo
 import { ConnectedAccounts } from "@/components/settings/ConnectedAccounts";
 import { getGmailConnectionStatus } from "@/actions/gmail";
 
-export default async function SettingsPage() {
+export default async function SettingsPage(props: PageProps<"/settings">) {
+  const searchParams = await props.searchParams;
   const { user } = await requireUser();
   const supabase = await createClient();
 
@@ -17,9 +18,23 @@ export default async function SettingsPage() {
     getGmailConnectionStatus(),
   ]);
 
+  const gmailError = typeof searchParams.gmail_error === "string" ? searchParams.gmail_error : null;
+  const gmailConnected = searchParams.gmail_connected === "1";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <h1 className="text-2xl font-extrabold tracking-tight">Settings</h1>
+
+      {gmailError && (
+        <div className="rounded-[var(--radius-md)] border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+          Couldn&apos;t connect Gmail: {gmailError}
+        </div>
+      )}
+      {gmailConnected && (
+        <div className="rounded-[var(--radius-md)] border border-success/30 bg-success/10 p-4 text-sm text-success">
+          Gmail connected successfully.
+        </div>
+      )}
 
       <Card>
         <h2 className="mb-1 text-lg font-semibold">Notifications</h2>
