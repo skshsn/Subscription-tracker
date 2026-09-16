@@ -17,7 +17,35 @@ const PAGE_SIZE = 50;
 // the untouched remainder silently falls behind the cursor and is never
 // seen again (the bug this replaces: a single 50-message page followed by
 // jumping the cursor to "now" regardless of whether anything was missed).
-const MAX_PAGES = 4;
+// Kept conservative (2 pages = 100 messages) to stay within the hosting
+// platform's serverless function time limit.
+const MAX_PAGES = 2;
+
+// Fetching metadata for every message at once (one Promise.all over the
+// whole page) blew past Gmail's per-user rate limit and/or the function's
+// time budget, and a single failed request aborted the entire batch --
+// surfacing as a raw platform error page instead of a JSON response.
+// Bounded concurrency plus per-item error handling fixes both.
+const METADATA_FETCH_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await fn(items[current]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 export interface GmailMessageSummary {
   id: string;
@@ -108,29 +136,37 @@ export async function listCandidateMessages(
     if (page === MAX_PAGES - 1) hasMore = true;
   }
 
-  // Fetch metadata concurrently rather than one-by-one -- with up to
-  // MAX_PAGES * PAGE_SIZE messages, a sequential loop risks the
-  // function's execution time limit.
-  const summaries = await Promise.all(
-    messageIds.map(async (id): Promise<GmailMessageSummary | null> => {
-      const full = await gmail.users.messages.get({
-        userId: "me",
-        id,
-        format: "metadata",
-        metadataHeaders: ["Subject", "From"],
-      });
+  // Fetch metadata with bounded concurrency rather than one-by-one (too
+  // slow) or all-at-once (blows past Gmail's rate limit and/or the
+  // function's time budget). A message that fails to fetch is skipped,
+  // not fatal to the whole scan -- it'll be picked up on a later scan
+  // since it was never inserted into detected_candidates.
+  const summaries = await mapWithConcurrency(
+    messageIds,
+    METADATA_FETCH_CONCURRENCY,
+    async (id): Promise<GmailMessageSummary | null> => {
+      try {
+        const full = await gmail.users.messages.get({
+          userId: "me",
+          id,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From"],
+        });
 
-      const headers = full.data.payload?.headers ?? [];
-      const from = extractHeader(headers, "From");
+        const headers = full.data.payload?.headers ?? [];
+        const from = extractHeader(headers, "From");
 
-      return {
-        id,
-        threadId: full.data.threadId ?? "",
-        senderDomain: extractDomain(from),
-        subject: extractHeader(headers, "Subject"),
-        snippet: full.data.snippet ?? "",
-      };
-    }),
+        return {
+          id,
+          threadId: full.data.threadId ?? "",
+          senderDomain: extractDomain(from),
+          subject: extractHeader(headers, "Subject"),
+          snippet: full.data.snippet ?? "",
+        };
+      } catch {
+        return null;
+      }
+    },
   );
 
   return {
