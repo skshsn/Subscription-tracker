@@ -4,11 +4,16 @@ import { listCandidateMessages } from "@/lib/gmail/client";
 import { classifyEmail } from "@/lib/gmail/classifier";
 import { extractWithLLMFallback } from "@/lib/gmail/extract";
 
-// TEMP: lowered from 60 to 0 to diagnose why real-world scans were
-// finding zero candidates -- lets us inspect actual confidence scores
-// in detected_candidates for real emails instead of guessing at the
-// classifier's calibration blind. Restore to 60 once recalibrated.
-const MIN_CONFIDENCE_TO_PERSIST = 0;
+// Calibrated against a real inbox scan rather than the PRD's untested
+// >=60 figure: real recurring-payment emails routed through a third-
+// party payment gateway (Razorpay, Cashfree, Stripe -- extremely common
+// in practice) never get the sender-domain-match bonus, since the
+// sender is the payment processor, not the merchant. Their ceiling is
+// keyword + price match (~45), while generic transactional noise
+// (rent receipts, utility bills, job-application confirmations, one-
+// time purchases) tops out around 25. 40 sits cleanly between the two
+// observed clusters -- see keywords.ts for the underlying weights.
+const MIN_CONFIDENCE_TO_PERSIST = 40;
 const UNIQUE_VIOLATION = "23505";
 
 function domainMatches(domain: string, known: string) {
@@ -77,6 +82,21 @@ export async function runScanForConnection(connectionId: string, userId: string)
         .maybeSingle();
       matchedSubscriptionId = existingSub?.id ?? null;
     }
+
+    // A recurring sender (e.g. a monthly renewal notice) produces a new
+    // message -- and thus a new candidate row -- every cycle. Without
+    // this, the Candidates page fills up with one card per past email
+    // instead of one per distinct subscription. Superseding older
+    // pending candidates from the same sender keeps only the most
+    // recent (freshest price/date data) as the active card; the
+    // superseded ones are marked 'expired', not deleted, so they still
+    // block that message_id from ever being re-surfaced.
+    await admin
+      .from("detected_candidates")
+      .update({ status: "expired" })
+      .eq("user_id", userId)
+      .eq("sender_domain", msg.senderDomain)
+      .eq("status", "pending");
 
     const { error } = await admin.from("detected_candidates").insert({
       user_id: userId,

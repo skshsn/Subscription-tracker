@@ -18,6 +18,7 @@ export interface Candidate {
   trial_guess: boolean;
   confidence: number;
   subject: string | null;
+  category_name?: string | null;
 }
 
 function confidenceVariant(confidence: number) {
@@ -52,6 +53,9 @@ export function CandidateCard({ candidate }: { candidate: Candidate }) {
               {candidate.confidence}% confidence
             </Badge>
             {candidate.trial_guess && <Badge variant="accent">Trial</Badge>}
+            {candidate.category_name && (
+              <Badge variant="neutral">{candidate.category_name}</Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted">
             {candidate.price_guess != null && candidate.currency_guess
