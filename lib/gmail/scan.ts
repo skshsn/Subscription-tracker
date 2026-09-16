@@ -29,7 +29,7 @@ export async function runScanForConnection(connectionId: string, userId: string)
     ? formatAfterDate(connection.last_scanned_at)
     : undefined;
 
-  const messages = await listCandidateMessages(connectionId, after);
+  const { summaries: messages, hasMore } = await listCandidateMessages(connectionId, after);
 
   const { data: providers } = await admin
     .from("providers")
@@ -101,10 +101,17 @@ export async function runScanForConnection(connectionId: string, userId: string)
     if (!error) created++;
   }
 
-  await admin
-    .from("gmail_connections")
-    .update({ last_scanned_at: new Date().toISOString() })
-    .eq("id", connectionId);
+  // Only advance the cursor once this run has actually caught up to "now" --
+  // if hasMore is true, the mailbox has more matching messages than this
+  // invocation processed, and jumping the cursor forward anyway would
+  // permanently skip the untouched remainder rather than pick it up on
+  // the next scan.
+  if (!hasMore) {
+    await admin
+      .from("gmail_connections")
+      .update({ last_scanned_at: new Date().toISOString() })
+      .eq("id", connectionId);
+  }
 
-  return { scanned: messages.length, created, discarded };
+  return { scanned: messages.length, created, discarded, hasMore };
 }

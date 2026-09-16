@@ -24,8 +24,11 @@ export function ConnectedAccounts({ gmail }: { gmail: GmailStatus | null }) {
       const res = await fetch("/api/gmail/scan", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Scan failed");
+      const more = data.hasMore
+        ? " More emails are still queued — click Scan now again to continue."
+        : "";
       setScanResult(
-        `Scanned ${data.scanned} emails, found ${data.created} new candidate${data.created === 1 ? "" : "s"}.`,
+        `Scanned ${data.scanned} emails, found ${data.created} new candidate${data.created === 1 ? "" : "s"}.${more}`,
       );
     } catch (err) {
       setScanResult(err instanceof Error ? err.message : "Scan failed");
