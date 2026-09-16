@@ -4,7 +4,11 @@ import { listCandidateMessages } from "@/lib/gmail/client";
 import { classifyEmail } from "@/lib/gmail/classifier";
 import { extractWithLLMFallback } from "@/lib/gmail/extract";
 
-const MIN_CONFIDENCE_TO_PERSIST = 60;
+// TEMP: lowered from 60 to 0 to diagnose why real-world scans were
+// finding zero candidates -- lets us inspect actual confidence scores
+// in detected_candidates for real emails instead of guessing at the
+// classifier's calibration blind. Restore to 60 once recalibrated.
+const MIN_CONFIDENCE_TO_PERSIST = 0;
 const UNIQUE_VIOLATION = "23505";
 
 function domainMatches(domain: string, known: string) {
